@@ -7,7 +7,6 @@ struct ContentView: View {
     @EnvironmentObject private var store: GoalStore
     @State private var objective = ""
     @State private var generatedPlan: GoalPlan?
-    @State private var selectedTab = 0
     @State private var isGenerating = false
     @State private var aiStatus = "Vérification d’Apple Intelligence…"
     @State private var usedAppleIntelligence: Bool?
@@ -15,13 +14,37 @@ struct ContentView: View {
     private let fallbackEngine = GoalEngine()
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        TabView {
             NavigationStack {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        hero
-                        aiStatusCard
-                        objectiveCard
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Quel est ton objectif ?")
+                                .font(.largeTitle.bold())
+                            Text("Décris ce que tu veux obtenir. Nuance le transforme en plan clair et actionnable.")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        statusCard
+
+                        VStack(spacing: 14) {
+                            TextField("Ex : Économiser 500 € par mois", text: $objective, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(3...6)
+
+                            Button(action: generate) {
+                                HStack {
+                                    if isGenerating { ProgressView() } else { Image(systemName: "sparkles") }
+                                    Text(isGenerating ? "Analyse en cours…" : "Créer mon plan")
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isGenerating || objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                        .padding()
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
 
                         if let generatedPlan {
                             PlanView(plan: generatedPlan, isSavedPlan: false)
@@ -30,39 +53,18 @@ struct ContentView: View {
                     .padding()
                 }
                 .navigationTitle("Nuance")
-                .task {
-                    refreshAIStatus()
-                }
+                .task { refreshAIStatus() }
             }
-            .tabItem {
-                Label("Objectif", systemImage: "sparkles")
-            }
-            .tag(0)
+            .tabItem { Label("Objectif", systemImage: "sparkles") }
 
-            NavigationStack {
-                HistoryView()
-            }
-            .tabItem {
-                Label("Historique", systemImage: "clock.arrow.circlepath")
-            }
-            .tag(1)
+            NavigationStack { HistoryView() }
+                .tabItem { Label("Historique", systemImage: "clock.arrow.circlepath") }
         }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Quel est ton objectif ?")
-                .font(.largeTitle.bold())
-            Text("Décris ce que tu veux obtenir. Nuance le transforme en plan clair et actionnable.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var aiStatusCard: some View {
+    private var statusCard: some View {
         HStack(spacing: 10) {
             Image(systemName: usedAppleIntelligence == false ? "cpu" : "sparkles")
-                .font(.title3)
             VStack(alignment: .leading, spacing: 2) {
                 Text(usedAppleIntelligence == true ? "Apple Intelligence" : usedAppleIntelligence == false ? "Mode local" : "Moteur IA")
                     .font(.subheadline.weight(.semibold))
@@ -76,38 +78,10 @@ struct ContentView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var objectiveCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            TextField("Ex : Économiser 500 € par mois", text: $objective, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(3...6)
-
-            Button {
-                generate()
-            } label: {
-                HStack {
-                    if isGenerating {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "sparkles")
-                    }
-                    Text(isGenerating ? "Analyse en cours…" : "Créer mon plan")
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isGenerating || objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18))
-    }
-
     private func refreshAIStatus() {
 #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            switch model.availability {
+            switch SystemLanguageModel.default.availability {
             case .available:
                 aiStatus = "Disponible sur cet iPhone. Les plans seront générés sur l’appareil."
                 usedAppleIntelligence = nil
@@ -135,66 +109,58 @@ struct ContentView: View {
 
         Task {
 #if canImport(FoundationModels)
-            if #available(iOS 26.0, *) {
-                let model = SystemLanguageModel.default
-                if model.isAvailable {
-                    do {
-                        let session = LanguageModelSession(
-                            model: model,
-                            instructions: """
-                            Tu es le moteur de planification de l’application Nuance.
-                            Réponds en français.
-                            Transforme l’objectif de l’utilisateur en plan concret, réaliste et directement exploitable.
-                            Ne prétends jamais avoir effectué une action externe.
-                            N’invente pas de prix, de disponibilité ou de faits qui exigeraient une recherche externe.
-                            Fais des étapes courtes, précises et ordonnées.
-                            """
-                        )
+            if #available(iOS 26.0, *), SystemLanguageModel.default.isAvailable {
+                do {
+                    let session = LanguageModelSession(
+                        model: SystemLanguageModel.default,
+                        instructions: """
+                        Tu es le moteur de planification de Nuance. Réponds en français.
+                        Transforme l’objectif en plan concret, réaliste et directement exploitable.
+                        N’invente pas de faits, de prix ou de disponibilités qui nécessitent une recherche externe.
+                        Ne prétends jamais avoir effectué une action externe.
+                        """
+                    )
 
-                        let response = try await session.respond(
-                            to: """
-                            Analyse cet objectif : \(text)
-                            Déduis une catégorie courte, 3 à 5 sous-objectifs, jusqu’à 4 informations importantes à préciser,
-                            3 à 6 étapes d’action ordonnées, puis une seule prochaine action très concrète.
-                            """,
-                            generating: GeneratedGoalPlan.self
-                        )
+                    let response = try await session.respond(
+                        to: """
+                        Analyse cet objectif : \(text)
+                        Donne une catégorie courte, 3 à 5 sous-objectifs, jusqu’à 4 informations à préciser,
+                        3 à 6 étapes d’action ordonnées et une seule prochaine action très concrète.
+                        """,
+                        generating: GeneratedGoalPlan.self
+                    )
 
-                        let generated = response.content
-                        let plan = GoalPlan(
-                            objective: text,
-                            detectedIntent: generated.detectedIntent,
-                            subgoals: generated.subgoals,
-                            missingInformation: generated.missingInformation,
-                            actionPlan: generated.actionPlan.map {
-                                ActionStep(title: $0.title, details: $0.details)
-                            },
-                            recommendedNextStep: generated.recommendedNextStep
-                        )
+                    let result = response.content
+                    let plan = GoalPlan(
+                        objective: text,
+                        detectedIntent: result.detectedIntent,
+                        subgoals: result.subgoals,
+                        missingInformation: result.missingInformation,
+                        actionPlan: result.actionPlan.map { ActionStep(title: $0.title, details: $0.details) },
+                        recommendedNextStep: result.recommendedNextStep
+                    )
 
-                        await MainActor.run {
-                            generatedPlan = plan
-                            store.add(plan)
-                            usedAppleIntelligence = true
-                            aiStatus = "Plan généré localement avec Apple Intelligence."
-                            isGenerating = false
-                        }
-                        return
-                    } catch {
-                        await MainActor.run {
-                            aiStatus = "Apple Intelligence a échoué pour cette demande. Mode local utilisé."
-                        }
+                    await MainActor.run {
+                        generatedPlan = plan
+                        store.add(plan)
+                        usedAppleIntelligence = true
+                        aiStatus = "Plan généré localement avec Apple Intelligence."
+                        isGenerating = false
+                    }
+                    return
+                } catch {
+                    await MainActor.run {
+                        aiStatus = "Apple Intelligence n’a pas pu traiter cette demande. Mode local utilisé."
                     }
                 }
             }
 #endif
-
-            let fallbackPlan = fallbackEngine.buildPlan(from: text)
+            let plan = fallbackEngine.buildPlan(from: text)
             await MainActor.run {
-                generatedPlan = fallbackPlan
-                store.add(fallbackPlan)
+                generatedPlan = plan
+                store.add(plan)
                 usedAppleIntelligence = false
-                if !aiStatus.contains("échoué") {
+                if !aiStatus.contains("n’a pas pu") {
                     aiStatus = "Apple Intelligence indisponible. Plan généré avec le moteur local de secours."
                 }
                 isGenerating = false
@@ -209,52 +175,38 @@ private struct PlanView: View {
     let isSavedPlan: Bool
 
     private var currentPlan: GoalPlan {
-        if isSavedPlan, let updated = store.plans.first(where: { $0.id == plan.id }) {
-            return updated
-        }
+        if isSavedPlan, let saved = store.plans.first(where: { $0.id == plan.id }) { return saved }
         return plan
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            section("Objectif détecté", systemImage: "target") {
+        VStack(alignment: .leading, spacing: 16) {
+            card("Objectif détecté", icon: "target") {
                 Text(currentPlan.objective)
                 Text(currentPlan.detectedIntent)
                     .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.quaternary, in: Capsule())
             }
 
-            section("Sous-objectifs", systemImage: "square.stack.3d.up") {
+            card("Sous-objectifs", icon: "square.stack.3d.up") {
                 ForEach(Array(currentPlan.subgoals.enumerated()), id: \.offset) { index, item in
-                    Label("\(index + 1). \(item)", systemImage: "circle")
+                    Text("\(index + 1). \(item)")
                 }
             }
 
-            section("Informations à préciser", systemImage: "questionmark.circle") {
-                ForEach(currentPlan.missingInformation, id: \.self) { item in
-                    Label(item, systemImage: "exclamationmark.bubble")
-                }
+            card("Informations à préciser", icon: "questionmark.circle") {
+                ForEach(currentPlan.missingInformation, id: \.self) { Text("• \($0)") }
             }
 
-            section("Plan d’action", systemImage: "checklist") {
+            card("Plan d’action", icon: "checklist") {
                 ForEach(currentPlan.actionPlan) { step in
                     Button {
-                        guard isSavedPlan else { return }
-                        store.toggleStep(planID: currentPlan.id, stepID: step.id)
+                        if isSavedPlan { store.toggleStep(planID: currentPlan.id, stepID: step.id) }
                     } label: {
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: 10) {
                             Image(systemName: step.isCompleted ? "checkmark.circle.fill" : "circle")
-                                .font(.title3)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(step.title)
-                                    .font(.headline)
-                                    .strikethrough(step.isCompleted)
-                                Text(step.details)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.leading)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(step.title).font(.headline).strikethrough(step.isCompleted)
+                                Text(step.details).font(.subheadline).foregroundStyle(.secondary)
                             }
                             Spacer()
                         }
@@ -263,18 +215,16 @@ private struct PlanView: View {
                 }
             }
 
-            section("Prochaine étape", systemImage: "bolt.fill") {
-                Text(currentPlan.recommendedNextStep)
-                    .font(.headline)
+            card("Prochaine étape", icon: "bolt.fill") {
+                Text(currentPlan.recommendedNextStep).font(.headline)
             }
         }
     }
 
     @ViewBuilder
-    private func section<Content: View>(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
+    private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: systemImage)
-                .font(.title3.bold())
+            Label(title, systemImage: icon).font(.title3.bold())
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -289,29 +239,18 @@ private struct HistoryView: View {
     var body: some View {
         Group {
             if store.plans.isEmpty {
-                ContentUnavailableView(
-                    "Aucun objectif",
-                    systemImage: "clock",
-                    description: Text("Tes objectifs enregistrés apparaîtront ici.")
-                )
+                ContentUnavailableView("Aucun objectif", systemImage: "clock", description: Text("Tes objectifs enregistrés apparaîtront ici."))
             } else {
                 List {
                     ForEach(store.plans) { plan in
                         NavigationLink {
-                            ScrollView {
-                                PlanView(plan: plan, isSavedPlan: true)
-                                    .padding()
-                            }
-                            .navigationTitle("Plan")
-                            .navigationBarTitleDisplayMode(.inline)
+                            ScrollView { PlanView(plan: plan, isSavedPlan: true).padding() }
+                                .navigationTitle("Plan")
                         } label: {
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(plan.objective)
-                                    .font(.headline)
-                                    .lineLimit(2)
+                            VStack(alignment: .leading) {
+                                Text(plan.objective).font(.headline).lineLimit(2)
                                 Text(plan.createdAt, format: .dateTime.day().month().year().hour().minute())
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -320,11 +259,7 @@ private struct HistoryView: View {
             }
         }
         .navigationTitle("Historique")
-        .toolbar {
-            if !store.plans.isEmpty {
-                EditButton()
-            }
-        }
+        .toolbar { if !store.plans.isEmpty { EditButton() } }
     }
 }
 
@@ -335,13 +270,13 @@ private struct GeneratedGoalPlan {
     @Guide(description: "Catégorie courte de l’objectif")
     var detectedIntent: String
 
-    @Guide(description: "Sous-objectifs essentiels", .count(3...5))
+    @Guide(description: "Sous-objectifs essentiels", .minimumCount(3), .maximumCount(5))
     var subgoals: [String]
 
     @Guide(description: "Informations importantes manquantes", .maximumCount(4))
     var missingInformation: [String]
 
-    @Guide(description: "Étapes ordonnées et concrètes", .count(3...6))
+    @Guide(description: "Étapes ordonnées et concrètes", .minimumCount(3), .maximumCount(6))
     var actionPlan: [GeneratedActionStep]
 
     @Guide(description: "Une seule prochaine action à réaliser maintenant")
@@ -360,6 +295,5 @@ private struct GeneratedActionStep {
 #endif
 
 #Preview {
-    ContentView()
-        .environmentObject(GoalStore())
+    ContentView().environmentObject(GoalStore())
 }
