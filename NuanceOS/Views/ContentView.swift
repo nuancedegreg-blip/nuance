@@ -9,7 +9,7 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            CoachView(onPlanCreated: { selectedTab = 2 })
+            CoachView(onOpenProjects: { selectedTab = 2 })
                 .tabItem { Label("Nuance", systemImage: "sparkles") }
                 .tag(0)
 
@@ -25,12 +25,11 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Coach
+// MARK: - Assistant
 
 private struct CoachView: View {
     @EnvironmentObject private var store: GoalStore
-
-    let onPlanCreated: () -> Void
+    let onOpenProjects: () -> Void
 
     @State private var input = ""
     @State private var messages: [ChatMessage] = []
@@ -56,9 +55,7 @@ private struct CoachView: View {
                                 hero
                                 intelligencePill
 
-                                if messages.isEmpty {
-                                    starterPanel
-                                }
+                                if messages.isEmpty { starterPanel }
 
                                 ForEach(messages) { message in
                                     MessageBubble(message: message)
@@ -75,9 +72,7 @@ private struct CoachView: View {
                                 }
 
                                 if let generatedPlan {
-                                    GeneratedPlanCard(plan: generatedPlan) {
-                                        onPlanCreated()
-                                    }
+                                    GeneratedPlanCard(plan: generatedPlan, openProjects: onOpenProjects)
                                 }
                             }
                             .padding(.horizontal, 16)
@@ -98,13 +93,9 @@ private struct CoachView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         if !messages.isEmpty && generatedPlan == nil {
-                            Button("Créer le plan maintenant", systemImage: "wand.and.stars") {
-                                forcePlan()
-                            }
+                            Button("Créer le plan maintenant", systemImage: "wand.and.stars") { forcePlan() }
                         }
-                        Button("Nouvelle conversation", systemImage: "arrow.counterclockwise") {
-                            resetConversation()
-                        }
+                        Button("Nouvelle conversation", systemImage: "arrow.counterclockwise") { resetConversation() }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -116,9 +107,11 @@ private struct CoachView: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Qu’est-ce que tu veux changer ?")
+            Text(generatedPlan == nil ? "Qu’est-ce que tu veux changer ?" : "Continue, je t’écoute.")
                 .font(.system(size: 34, weight: .bold, design: .rounded))
-            Text("Parle normalement. Je comprends ta situation, je te pose les bonnes questions et je transforme ton objectif en prochaines actions.")
+            Text(generatedPlan == nil
+                 ? "Parle normalement. Je comprends ta situation, je te pose les bonnes questions et je transforme ton objectif en prochaines actions."
+                 : "Ton plan existe, mais la conversation continue. Tu peux me demander de l’expliquer, le remettre en question ou parler de ce qui change.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -147,8 +140,7 @@ private struct CoachView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Commence par une phrase")
-                        .font(.headline)
+                    Text("Commence par une phrase").font(.headline)
                     Text("Pas de formulaire. Pas de jargon.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -161,7 +153,7 @@ private struct CoachView: View {
 
             QuickPrompt(title: "Économiser", text: "Je veux économiser 500 € par mois", icon: "eurosign.circle.fill") { sendPreset($0) }
             QuickPrompt(title: "Projet", text: "Je veux lancer une activité qui rapporte", icon: "briefcase.fill") { sendPreset($0) }
-            QuickPrompt(title: "Vie perso", text: "Je veux reprendre le contrôle de mon organisation", icon: "calendar.badge.clock") { sendPreset($0) }
+            QuickPrompt(title: "Organisation", text: "Je veux reprendre le contrôle de mon organisation", icon: "calendar.badge.clock") { sendPreset($0) }
             QuickPrompt(title: "Ambition", text: "J’ai un gros objectif mais je ne sais pas par où commencer", icon: "flag.checkered") { sendPreset($0) }
         }
         .nuanceCard()
@@ -171,21 +163,16 @@ private struct CoachView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Ce que j’ai compris", systemImage: "brain.head.profile.fill")
                 .font(.headline)
-
             Text(situationSummary)
                 .font(.subheadline)
-                .foregroundStyle(.primary)
-
-            if !knownFacts.isEmpty {
-                FlowFacts(facts: Array(knownFacts.prefix(6)))
-            }
+            if !knownFacts.isEmpty { FlowFacts(facts: Array(knownFacts.prefix(6))) }
         }
         .nuanceCard()
     }
 
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField(messages.isEmpty ? "Dis-moi ton objectif…" : "Réponds à Nuance…", text: $input, axis: .vertical)
+            TextField(generatedPlan == nil ? "Dis-moi ton objectif…" : "Continue la conversation…", text: $input, axis: .vertical)
                 .lineLimit(1...5)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
@@ -200,8 +187,8 @@ private struct CoachView: View {
                     .frame(width: 43, height: 43)
                     .background(.indigo, in: Circle())
             }
-            .disabled(isGenerating || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || generatedPlan != nil)
-            .opacity((isGenerating || generatedPlan != nil) ? 0.45 : 1)
+            .disabled(isGenerating || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .opacity(isGenerating ? 0.45 : 1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -215,40 +202,40 @@ private struct CoachView: View {
 
     private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isGenerating, generatedPlan == nil else { return }
+        guard !text.isEmpty, !isGenerating else { return }
         input = ""
         messages.append(ChatMessage(role: .user, text: text))
         isGenerating = true
-        Task { await processConversation(forcePlan: false) }
+
+        Task {
+            if generatedPlan == nil {
+                await processPlanningConversation(forcePlan: false)
+            } else {
+                await continueConversation()
+            }
+        }
     }
 
     private func forcePlan() {
         guard !messages.isEmpty, !isGenerating, generatedPlan == nil else { return }
         isGenerating = true
-        Task { await processConversation(forcePlan: true) }
+        Task { await processPlanningConversation(forcePlan: true) }
     }
 
-    private func processConversation(forcePlan: Bool) async {
+    private func processPlanningConversation(forcePlan: Bool) async {
 #if canImport(FoundationModels)
         if #available(iOS 26.0, *), SystemLanguageModel.default.isAvailable {
             do {
-                let transcript = messages.map {
-                    "\($0.role == .user ? "UTILISATEUR" : "NUANCE"): \($0.text)"
-                }.joined(separator: "\n")
-
+                let transcript = transcriptText
                 let session = LanguageModelSession(
                     model: SystemLanguageModel.default,
                     instructions: """
-                    Tu es Nuance, un coach personnel orienté résultats. Tu réponds en français.
-                    Ton travail est de comprendre la vraie situation avant de conseiller.
-                    Tu poses UNE seule question à la fois, courte, naturelle et décisive.
-                    Tu ne redemandes jamais une information déjà donnée.
-                    Cherche surtout : résultat attendu, point de départ, contraintes, ressources, délai, budget si pertinent, motivation, blocages et critère de réussite.
-                    Après 2 à 5 questions utiles, construis un plan concret et personnalisé.
-                    Le plan doit privilégier les actions à fort impact, avec une première action réalisable immédiatement.
-                    Si l’objectif est trop large, découpe-le. Si une hypothèse est incertaine, dis-le.
-                    N’invente jamais de faits externes, prix, lois, disponibilités ou données non fournies.
-                    Le ton est direct, chaleureux, intelligent, jamais scolaire.
+                    Tu es Nuance, un assistant personnel orienté résultats. Tu réponds en français.
+                    Tu comprends la situation avant de conseiller et tu poses UNE seule question à la fois.
+                    Ne redemande jamais une information déjà donnée. Cherche le résultat attendu, le point de départ, les contraintes, les ressources, le délai, le budget si pertinent, les blocages et le critère de réussite.
+                    Après 2 à 5 questions utiles, construis un plan concret et personnalisé avec une première action immédiatement réalisable.
+                    N’invente jamais de faits externes, prix, lois ou disponibilités.
+                    Ton ton est naturel, direct et utile.
                     """
                 )
 
@@ -264,7 +251,6 @@ private struct CoachView: View {
                     Questions déjà posées : \(questionCount)
                     \(decision)
 
-                    Retourne un tour structuré. reply est le message naturel affiché à l’utilisateur.
                     Si shouldBuildPlan=false, reply contient UNE seule question.
                     Si shouldBuildPlan=true, complète le plan et choisis UNE priorité immédiate.
                     """,
@@ -293,30 +279,86 @@ private struct CoachView: View {
                         questionCount += 1
                         messages.append(ChatMessage(role: .assistant, text: turn.reply))
                     }
-
                     isGenerating = false
                 }
                 return
             } catch {
-                await MainActor.run {
-                    aiStatus = "Apple Intelligence n’a pas pu traiter ce tour. Le moteur local prend le relais."
-                }
+                await MainActor.run { aiStatus = "Apple Intelligence n’a pas pu traiter ce tour. Mode local utilisé." }
             }
         }
 #endif
         await MainActor.run {
-            fallbackConversation(forcePlan: forcePlan)
+            fallbackPlanning(forcePlan: forcePlan)
             isGenerating = false
         }
     }
 
-    private func fallbackConversation(forcePlan: Bool) {
+    private func continueConversation() async {
+#if canImport(FoundationModels)
+        if #available(iOS 26.0, *), SystemLanguageModel.default.isAvailable {
+            do {
+                let planText: String
+                if let plan = generatedPlan {
+                    planText = """
+                    Objectif: \(plan.objective)
+                    Type: \(plan.detectedIntent)
+                    Prochaine action: \(plan.recommendedNextStep)
+                    Étapes: \(plan.actionPlan.map { "\($0.title): \($0.details)" }.joined(separator: " | "))
+                    """
+                } else {
+                    planText = "Aucun plan."
+                }
+
+                let session = LanguageModelSession(
+                    model: SystemLanguageModel.default,
+                    instructions: """
+                    Tu es Nuance, l’assistant personnel de l’utilisateur. La conversation ne s’arrête jamais parce qu’un plan a été créé.
+                    Réponds en français, de façon naturelle et concise. Utilise le plan et l’historique pour répondre aux questions, expliquer les choix, aider en cas de blocage, challenger une hypothèse et proposer un ajustement si la situation change.
+                    Ne prétends pas avoir effectué d’action externe et n’invente pas de données factuelles absentes.
+                    """
+                )
+
+                let response = try await session.respond(to: """
+                Plan actuel :
+                \(planText)
+
+                Conversation :
+                \(transcriptText)
+
+                Réponds au dernier message de l’utilisateur. Ne termine pas la conversation et ne dis pas que le plan est figé.
+                """)
+
+                await MainActor.run {
+                    messages.append(ChatMessage(role: .assistant, text: response.content))
+                    isGenerating = false
+                }
+                return
+            } catch {
+                await MainActor.run { aiStatus = "Apple Intelligence est temporairement indisponible. Réponse locale utilisée." }
+            }
+        }
+#endif
+        await MainActor.run {
+            messages.append(ChatMessage(
+                role: .assistant,
+                text: "Oui, on peut continuer. Dis-moi ce que tu veux modifier, ce qui te bloque ou ce qui a changé, et je m’appuie sur ton plan actuel pour t’aider."
+            ))
+            isGenerating = false
+        }
+    }
+
+    private var transcriptText: String {
+        messages.map { "\($0.role == .user ? "UTILISATEUR" : "NUANCE"): \($0.text)" }
+            .joined(separator: "\n")
+    }
+
+    private func fallbackPlanning(forcePlan: Bool) {
         let userMessages = messages.filter { $0.role == .user }
         let firstObjective = userMessages.first?.text ?? "Objectif"
 
         if !forcePlan && questionCount < 3 {
             let questions = [
-                "Avant de te proposer quoi que ce soit : où en es-tu aujourd’hui par rapport à cet objectif ?",
+                "Où en es-tu aujourd’hui par rapport à cet objectif ?",
                 "Qu’est-ce qui risque le plus de t’empêcher d’y arriver : temps, argent, organisation, motivation ou autre chose ?",
                 "Quel résultat concret voudrais-tu voir, et dans quel délai ?"
             ]
@@ -339,7 +381,7 @@ private struct CoachView: View {
         )
         generatedPlan = plan
         store.add(plan)
-        messages.append(ChatMessage(role: .assistant, text: "J’ai assez d’éléments pour te donner une première trajectoire. On pourra la corriger au fur et à mesure de tes résultats."))
+        messages.append(ChatMessage(role: .assistant, text: "J’ai créé une première trajectoire. Et on peut continuer à en parler : le plan n’arrête pas la conversation."))
     }
 
     private func refreshAIStatus() {
@@ -396,36 +438,20 @@ private struct CoachView: View {
 private struct TodayView: View {
     @EnvironmentObject private var store: GoalStore
 
-    var activePlans: [GoalPlan] {
-        store.plans.filter { $0.actionPlan.contains(where: { !$0.isCompleted }) }
-    }
-
     var body: some View {
         NavigationStack {
             ZStack {
                 NuanceBackground()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("Aujourd’hui")
-                                .font(.system(size: 34, weight: .bold, design: .rounded))
-                            Text("Pas dix priorités. La bonne prochaine action.")
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Aujourd’hui")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                        Text("Pas dix priorités. La bonne prochaine action.")
+                            .foregroundStyle(.secondary)
 
-                        if let plan = activePlans.first,
+                        if let plan = store.plans.first(where: { $0.actionPlan.contains(where: { !$0.isCompleted }) }),
                            let step = plan.actionPlan.first(where: { !$0.isCompleted }) {
                             FocusCard(plan: plan, step: step)
-
-                            if activePlans.count > 1 {
-                                Text("Ensuite")
-                                    .font(.title3.bold())
-                                    .padding(.top, 4)
-
-                                ForEach(Array(activePlans.dropFirst().prefix(3))) { item in
-                                    MiniProjectCard(plan: item)
-                                }
-                            }
                         } else {
                             EmptyTodayCard()
                         }
@@ -456,45 +482,19 @@ private struct FocusCard: View {
 
             Text(step.title)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
-
             Text(step.details)
-                .font(.body)
                 .foregroundStyle(.secondary)
 
-            Divider()
-
-            HStack(spacing: 10) {
-                Button {
-                    store.toggleStep(planID: plan.id, stepID: step.id)
-                } label: {
-                    Label("C’est fait", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.indigo)
-
-                ShareLink(item: shareText) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 42)
-                }
-                .buttonStyle(.bordered)
+            Button {
+                store.toggleStep(planID: plan.id, stepID: step.id)
+            } label: {
+                Label("C’est fait", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
             }
-
-            Text("Projet : \(plan.objective)")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .lineLimit(2)
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
         }
-        .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26))
-        .overlay {
-            RoundedRectangle(cornerRadius: 26)
-                .stroke(.indigo.opacity(0.18), lineWidth: 1)
-        }
-    }
-
-    private var shareText: String {
-        "Ma priorité Nuance aujourd’hui : \(step.title) — \(step.details)"
+        .nuanceCard()
     }
 }
 
@@ -507,13 +507,8 @@ private struct ProjectsView: View {
         NavigationStack {
             ZStack {
                 NuanceBackground()
-
                 if store.plans.isEmpty {
-                    ContentUnavailableView(
-                        "Aucun projet",
-                        systemImage: "sparkles",
-                        description: Text("Crée ton premier objectif avec Nuance.")
-                    )
+                    ContentUnavailableView("Aucun projet", systemImage: "sparkles", description: Text("Crée ton premier objectif avec Nuance."))
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 14) {
@@ -554,9 +549,6 @@ private struct ProjectDetailView: View {
                         HStack {
                             Text(current.detectedIntent)
                                 .font(.caption.bold())
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.indigo.opacity(0.12), in: Capsule())
                             Spacer()
                             ProgressBadge(plan: current)
                         }
@@ -566,16 +558,13 @@ private struct ProjectDetailView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Plan d’action", systemImage: "checklist")
                             .font(.title3.bold())
-
                         ForEach(current.actionPlan) { step in
                             Button {
                                 store.toggleStep(planID: current.id, stepID: step.id)
                             } label: {
                                 HStack(alignment: .top, spacing: 12) {
                                     Image(systemName: step.isCompleted ? "checkmark.circle.fill" : "circle")
-                                        .font(.title3)
                                         .foregroundStyle(step.isCompleted ? .green : .indigo)
-
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(step.title)
                                             .font(.headline)
@@ -584,28 +573,16 @@ private struct ProjectDetailView: View {
                                         Text(step.details)
                                             .font(.subheadline)
                                             .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.leading)
                                     }
                                     Spacer()
                                 }
-                                .padding(.vertical, 4)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                     .nuanceCard()
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        Label("Cap", systemImage: "scope")
-                            .font(.headline)
-                        ForEach(current.subgoals, id: \.self) { goal in
-                            Label(goal, systemImage: "arrow.right")
-                                .font(.subheadline)
-                        }
-                    }
-                    .nuanceCard()
-
-                    ShareLink(item: projectShareText) {
+                    ShareLink(item: shareText) {
                         Label("Partager mon plan", systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                     }
@@ -618,13 +595,13 @@ private struct ProjectDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var projectShareText: String {
+    private var shareText: String {
         let steps = current.actionPlan.enumerated().map { "\($0.offset + 1). \($0.element.title)" }.joined(separator: "\n")
         return "Objectif : \(current.objective)\n\nPlan Nuance :\n\(steps)\n\nProchaine action : \(current.recommendedNextStep)"
     }
 }
 
-// MARK: - Reusable design
+// MARK: - Design
 
 private struct NuanceBackground: View {
     var body: some View {
@@ -651,17 +628,11 @@ private struct QuickPrompt: View {
                     .foregroundStyle(.indigo)
                     .frame(width: 30)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.bold())
-                    Text(text)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    Text(title).font(.subheadline.bold())
+                    Text(text).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption.bold())
-                    .foregroundStyle(.tertiary)
+                Image(systemName: "arrow.up.right").font(.caption.bold()).foregroundStyle(.tertiary)
             }
             .padding(12)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
@@ -672,7 +643,6 @@ private struct QuickPrompt: View {
 
 private struct FlowFacts: View {
     let facts: [String]
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(facts, id: \.self) { fact in
@@ -693,20 +663,16 @@ private struct ChatMessage: Identifiable, Hashable {
 
 private struct MessageBubble: View {
     let message: ChatMessage
-
     var body: some View {
         HStack(alignment: .bottom) {
             if message.role == .user { Spacer(minLength: 48) }
-
             VStack(alignment: .leading, spacing: 6) {
                 if message.role == .assistant {
                     Label("Nuance", systemImage: "sparkles")
                         .font(.caption.bold())
                         .foregroundStyle(.indigo)
                 }
-                Text(message.text)
-                    .font(.body)
-                    .textSelection(.enabled)
+                Text(message.text).textSelection(.enabled)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
@@ -714,7 +680,6 @@ private struct MessageBubble: View {
                 message.role == .user ? AnyShapeStyle(Color.indigo.opacity(0.16)) : AnyShapeStyle(.ultraThinMaterial),
                 in: RoundedRectangle(cornerRadius: 19)
             )
-
             if message.role == .assistant { Spacer(minLength: 34) }
         }
     }
@@ -724,7 +689,7 @@ private struct ThinkingBubble: View {
     var body: some View {
         HStack(spacing: 10) {
             ProgressView()
-            Text("Nuance réfléchit à la meilleure prochaine question…")
+            Text("Nuance réfléchit…")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -747,14 +712,10 @@ private struct GeneratedPlanCard: View {
                 Spacer()
                 ProgressBadge(plan: plan)
             }
-
-            Text(plan.recommendedNextStep)
-                .font(.title3.bold())
-
-            Text("C’est ta prochaine action. Le reste est enregistré comme projet et évoluera avec ta progression.")
+            Text(plan.recommendedNextStep).font(.title3.bold())
+            Text("Le plan est enregistré, mais tu peux continuer à discuter avec Nuance juste en dessous.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-
             Button(action: openProjects) {
                 Label("Ouvrir le projet", systemImage: "arrow.right.circle.fill")
                     .frame(maxWidth: .infinity)
@@ -768,7 +729,6 @@ private struct GeneratedPlanCard: View {
 
 private struct ProjectCard: View {
     let plan: GoalPlan
-
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .top) {
@@ -776,26 +736,17 @@ private struct ProjectCard: View {
                     Text(plan.detectedIntent.uppercased())
                         .font(.caption2.bold())
                         .foregroundStyle(.indigo)
-                    Text(plan.objective)
-                        .font(.title3.bold())
-                        .lineLimit(2)
+                    Text(plan.objective).font(.title3.bold()).lineLimit(2)
                 }
                 Spacer()
                 ProgressBadge(plan: plan)
             }
-
             if let next = plan.actionPlan.first(where: { !$0.isCompleted }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "bolt.fill")
-                        .foregroundStyle(.orange)
-                    Text(next.title)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Spacer()
-                }
+                Label(next.title, systemImage: "bolt.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
             } else {
                 Label("Objectif terminé", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.bold())
                     .foregroundStyle(.green)
             }
         }
@@ -803,38 +754,13 @@ private struct ProjectCard: View {
     }
 }
 
-private struct MiniProjectCard: View {
-    let plan: GoalPlan
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "target")
-                .foregroundStyle(.indigo)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(plan.objective)
-                    .font(.subheadline.bold())
-                    .lineLimit(1)
-                Text(plan.actionPlan.first(where: { !$0.isCompleted })?.title ?? "Terminé")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            ProgressBadge(plan: plan)
-        }
-        .nuanceCard()
-    }
-}
-
 private struct ProgressBadge: View {
     let plan: GoalPlan
-
     private var progress: Int {
         guard !plan.actionPlan.isEmpty else { return 0 }
         let done = plan.actionPlan.filter(\.isCompleted).count
         return Int((Double(done) / Double(plan.actionPlan.count)) * 100)
     }
-
     var body: some View {
         Text("\(progress)%")
             .font(.caption.bold())
@@ -848,12 +774,9 @@ private struct ProgressBadge: View {
 private struct EmptyTodayCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "sparkles")
-                .font(.largeTitle)
-                .foregroundStyle(.indigo)
-            Text("Rien à prioriser pour l’instant")
-                .font(.title2.bold())
-            Text("Crée un objectif avec Nuance. Dès qu’un plan existe, cette page te montre automatiquement la prochaine action la plus utile.")
+            Image(systemName: "sparkles").font(.largeTitle).foregroundStyle(.indigo)
+            Text("Rien à prioriser pour l’instant").font(.title2.bold())
+            Text("Crée un objectif avec Nuance. Dès qu’un plan existe, cette page te montre la prochaine action la plus utile.")
                 .foregroundStyle(.secondary)
         }
         .nuanceCard()
@@ -873,7 +796,7 @@ private extension View {
     }
 }
 
-// MARK: - Foundation Models structured output
+// MARK: - Foundation Models
 
 #if canImport(FoundationModels)
 @available(iOS 26.0, *)
@@ -881,28 +804,20 @@ private extension View {
 private struct GeneratedAssistantTurn {
     @Guide(description: "true si les informations suffisent pour produire un plan, false si une question est encore nécessaire")
     var shouldBuildPlan: Bool
-
     @Guide(description: "Message naturel et court affiché à l’utilisateur")
     var reply: String
-
     @Guide(description: "Résumé fidèle de la situation comprise")
     var situationSummary: String
-
     @Guide(description: "Faits importants explicitement donnés par l’utilisateur")
     var knownFacts: [String]
-
     @Guide(description: "Catégorie courte de l’objectif")
     var detectedIntent: String
-
     @Guide(description: "Sous-objectifs prioritaires")
     var subgoals: [String]
-
-    @Guide(description: "Informations encore manquantes, si elles sont importantes")
+    @Guide(description: "Informations encore manquantes")
     var missingInformation: [String]
-
     @Guide(description: "Étapes concrètes et ordonnées")
     var actionPlan: [GeneratedActionStep]
-
     @Guide(description: "Une seule action immédiate, précise et réalisable")
     var recommendedNextStep: String
 }
@@ -912,13 +827,11 @@ private struct GeneratedAssistantTurn {
 private struct GeneratedActionStep {
     @Guide(description: "Titre court et orienté action")
     var title: String
-
     @Guide(description: "Explication pratique en une ou deux phrases")
     var details: String
 }
 #endif
 
 #Preview {
-    ContentView()
-        .environmentObject(GoalStore())
+    ContentView().environmentObject(GoalStore())
 }
