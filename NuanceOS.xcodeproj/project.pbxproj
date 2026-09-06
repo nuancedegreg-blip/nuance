@@ -13,6 +13,8 @@
 		A10000000000000000000004 /* GoalEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* GoalEngine.swift */; };
 		A10000000000000000000005 /* GoalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* GoalStore.swift */; };
 		A10000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* Assets.xcassets */; };
+		A10000000000000000000007 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* RootView.swift */; };
+		A10000000000000000000008 /* ARStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ARStudioView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -23,6 +25,8 @@
 		A20000000000000000000005 /* GoalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000006 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000000000000000000007 /* NuanceOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NuanceOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000008 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* ARStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ARStudioView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,6 +72,8 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000002 /* ContentView.swift */,
+				A20000000000000000000008 /* RootView.swift */,
+				A20000000000000000000009 /* ARStudioView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -179,6 +185,8 @@
 				A10000000000000000000003 /* GoalPlan.swift in Sources */,
 				A10000000000000000000004 /* GoalEngine.swift in Sources */,
 				A10000000000000000000005 /* GoalStore.swift in Sources */,
+				A10000000000000000000007 /* RootView.swift in Sources */,
+				A10000000000000000000008 /* ARStudioView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +238,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Nuance;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Nuance utilise la caméra pour la réalité augmentée, le placement d’actions et les mesures AR.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -254,6 +263,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Nuance;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Nuance utilise la caméra pour la réalité augmentée, le placement d’actions et les mesures AR.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
